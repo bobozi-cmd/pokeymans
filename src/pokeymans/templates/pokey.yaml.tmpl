@@ -1,0 +1,41 @@
+version: "1"
+name: ${name}
+mode: ${mode}
+
+base:
+  name: ${base_name}
+  tag: latest
+  branch: base-images
+
+logging:
+  enabled: true
+  host_dir: "/var/log/${pod-name}"
+  container_dir: "/var/log/${pod-name}"
+
+resources:
+  gpus: null
+  shm_size: null
+  network_mode: null
+
+run:
+  strategy: runtime
+  apt: []
+  pip: []
+  requirements_file: null
+  env_file: null
+  env: {}
+  workdir: /app
+  entrypoint: ""
+  debug: false
+  ports: []
+  mounts: []
+
+dev:
+  workspace_host: "."
+  workspace_container: "/workspace"
+  persist_home: true
+  remote_user: null
+  ports: []
+  mounts: []
+  vscode_extensions:
+    - ms-python.python

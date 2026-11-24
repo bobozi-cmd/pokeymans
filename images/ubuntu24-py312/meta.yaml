@@ -1,0 +1,10 @@
+name: "ubuntu24-py312"
+tag: "latest"
+os: "ubuntu:24.04"
+python: "3.12"
+maintainer: "pokeymans"
+description: "Skeleton base image definition for Ubuntu 24.04 + Python 3.12"
+# TODO: Fill in prebuilt registry_ref, supported architectures, and default user once built.
+registry_ref: ""
+architectures:
+  - linux/amd64

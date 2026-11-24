@@ -1,0 +1,17 @@
+version: "1"
+branch: "base-images"
+
+# Registry of official base images available to `pokey.yaml` (`base.name`).
+images:
+  - name: "ubuntu24-py312"
+    tag: "latest"
+    description: "Ubuntu 24.04 LTS with Python 3.12 and common base utilities"
+    dockerfile: "images/ubuntu24-py312/Dockerfile"
+    meta: "images/ubuntu24-py312/meta.yaml"
+    registry_ref: ""  # Optional: prebuilt image ref, e.g. ghcr.io/bobozi-cmd/pokeymans-ubuntu24-py312:latest
+    os: "ubuntu:24.04"
+    python: "3.12"
+    tags:
+      - ubuntu
+      - python
+      - cpu

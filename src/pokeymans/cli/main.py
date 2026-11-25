@@ -7,7 +7,7 @@ import sys
 from collections.abc import Sequence
 
 from pokeymans import __version__
-from pokeymans.cli.commands import base_cmd, dev_cmd, init_cmd, lifecycle_cmd
+from pokeymans.cli.commands import base_cmd, dev_cmd, doctor_cmd, init_cmd, lifecycle_cmd
 from pokeymans.client import PokeyClient
 from pokeymans.exceptions import PokeyError
 
@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     lifecycle_cmd.register(subparsers)
     dev_cmd.register(subparsers)
     base_cmd.register(subparsers)
+    doctor_cmd.register(subparsers)
 
     return parser
 

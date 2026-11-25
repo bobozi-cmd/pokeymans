@@ -9,6 +9,7 @@ from pokeymans.models.config import (
     BaseImageRef,
     DevConfig,
     LogMountConfig,
+    PerfConfig,
     PodMode,
     PokeyConfig,
     ProvisionStrategy,
@@ -17,6 +18,7 @@ from pokeymans.models.config import (
 )
 from pokeymans.models.runtime import (
     ContainerRunSpec,
+    DoctorCheckResult,
     MountSpec,
     PodStatus,
     ProvisionResult,
@@ -32,6 +34,7 @@ __all__ = [
     "BaseImageRef",
     "LogMountConfig",
     "ResourceConfig",
+    "PerfConfig",
     "RunConfig",
     "DevConfig",
     "PokeyConfig",
@@ -41,4 +44,5 @@ __all__ = [
     "ContainerRunSpec",
     "ProvisionResult",
     "PodStatus",
+    "DoctorCheckResult",
 ]

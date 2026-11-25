@@ -16,6 +16,7 @@ DEFAULT_BASE_IMAGES_REPO = "git@github.com:bobozi-cmd/pokeymans.git"
 DEFAULT_BASE_IMAGES_BRANCH = "base-images"
 
 _POD_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
+_VALID_GPU_PROFILING = {"auto", "true", "false"}
 
 
 class PodMode(str, Enum):
@@ -80,6 +81,61 @@ class ResourceConfig:
 
 
 @dataclass
+class PerfConfig:
+    """Container observability & profiling configuration (CPU flamegraphs, nsys, ncu).
+
+    Enabled by default so pods can run `py-spy`, `perf`, `strace`, `htop`, and
+    (when GPU is enabled) `nvidia-smi`, `nsys`, and `ncu` out of the box.
+    """
+
+    enabled: bool = True
+    gpu_profiling: str = "auto"  # "auto" | "true" | "false"
+    mount_host_perf: bool = False
+    pid_host: bool = False
+    profile_subdir: str = "profiles"
+
+    def gpu_profiling_enabled(self, has_gpus: bool) -> bool:
+        """Determine whether GPU profiling privileges (nsys/ncu) should be enabled."""
+        if not self.enabled:
+            return False
+        mode = self.gpu_profiling.lower()
+        if mode == "true":
+            return True
+        if mode == "false":
+            return False
+        return has_gpus
+
+    def resolve_capabilities(self, has_gpus: bool) -> list[str]:
+        """Return Linux capabilities required for profiling."""
+        if not self.enabled:
+            return []
+        caps = ["SYS_PTRACE", "PERFMON"]
+        if self.gpu_profiling_enabled(has_gpus):
+            caps.append("SYS_ADMIN")
+        return caps
+
+    def resolve_security_opts(self) -> list[str]:
+        """Return Docker `--security-opt` entries required for profiling syscalls."""
+        if not self.enabled:
+            return []
+        return ["seccomp=unconfined"]
+
+    def resolve_env(self, has_gpus: bool, log_container_dir: str | None = None) -> dict[str, str]:
+        """Return profiling-related environment variables."""
+        env: dict[str, str] = {
+            "POKEY_PERF_ENABLED": "true" if self.enabled else "false",
+        }
+        if has_gpus:
+            if self.gpu_profiling_enabled(has_gpus):
+                env["NVIDIA_DRIVER_CAPABILITIES"] = "all"
+            else:
+                env["NVIDIA_DRIVER_CAPABILITIES"] = "compute,utility"
+        if self.enabled and log_container_dir and self.profile_subdir:
+            env["POKEY_PROFILE_DIR"] = f"{log_container_dir.rstrip('/')}/{self.profile_subdir.lstrip('/')}"
+        return env
+
+
+@dataclass
 class RunConfig:
     """Run Mode configuration (apt, pip, env, entrypoint, debug, strategy)."""
 
@@ -126,6 +182,7 @@ class PokeyConfig:
     mode: PodMode = PodMode.RUN
     logging: LogMountConfig = field(default_factory=LogMountConfig)
     resources: ResourceConfig = field(default_factory=ResourceConfig)
+    perf: PerfConfig = field(default_factory=PerfConfig)
     run: RunConfig = field(default_factory=RunConfig)
     dev: DevConfig = field(default_factory=DevConfig)
     extra: dict[str, Any] = field(default_factory=dict)
@@ -162,6 +219,11 @@ class PokeyConfig:
         if self.logging.enabled:
             if not self.logging.host_dir or not self.logging.container_dir:
                 raise ValueError("`logging.host_dir` and `logging.container_dir` must be non-empty.")
+        if self.perf.gpu_profiling.lower() not in _VALID_GPU_PROFILING:
+            raise ValueError(
+                f"Invalid `perf.gpu_profiling` {self.perf.gpu_profiling!r}; "
+                "expected one of: auto, true, false."
+            )
         if not self.dev.workspace_container.startswith("/"):
             raise ValueError("`dev.workspace_container` must be an absolute container path.")
         if not self.run.workdir.startswith("/"):

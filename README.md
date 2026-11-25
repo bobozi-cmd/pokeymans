@@ -1,11 +1,12 @@
 # pokeymans
 
-A lightweight Python pod environment builder packaged as a `.whl` with two modes:
+A lightweight Python pod environment builder packaged as a `.whl` with two modes and built-in profiling support:
 
 1. **Run Mode (`run`)**: Built on top of a base Docker image from the `base-images` branch; configures `apt` packages, `pip` packages, `env`, and a service `entrypoint` during service startup/updates (defaults to **Scheme B: runtime bootstrap injection**, with **Scheme A: build-time layered image** reserved via a pluggable provisioner). Supports `debug` mode to skip the service entrypoint while keeping the full runtime environment alive.
 2. **Dev Mode (`dev`)**: Uses a clean base image for **VS Code Dev Containers** without imposing service entrypoints or dependency constraints, allowing users to configure the container freely.
+3. **Built-in Perf & GPU Profiling (`perf`)**: Enabled by default in both Run and Dev modes (`SYS_PTRACE`, `PERFMON`, `seccomp=unconfined`, plus `SYS_ADMIN` & `NVIDIA_DRIVER_CAPABILITIES=all` when GPUs are attached). Pair with `ubuntu24-py312` (`py-spy`, `htop`, `sysstat`, `strace`, `gdb`) or `ubuntu24-cuda12-py312` (`nsys`, `ncu`, `py-spy`) on the `base-images` branch, and check host readiness with `pokey doctor`.
 
-By default, every pod mounts `/var/log/${pod-name}` (host -> container) so service and container logs persist on the host.
+By default, every pod mounts `/var/log/${pod-name}` (host -> container) and sets `POKEY_PROFILE_DIR=/var/log/${pod-name}/profiles` so logs, flamegraphs, and Nsight reports persist on the host.
 
 ## Quick Build & Install (`.whl`)
 
@@ -35,12 +36,10 @@ pokey base sync                     # Sync base-images catalog from git `base-im
 pokey base list                     # List available base images
 pokey base info <name>              # Show metadata for a base image
 pokey base pull <name>              # Pull (or build locally) a base image from `base-images`
+
+pokey doctor [--gpu] [--json]       # Check host Docker / perf / NVIDIA nsys & ncu readiness
 ```
 
 ## Configuration (`pokey.yaml`)
 
 See [`examples/pokey.yaml`](examples/pokey.yaml) for a full annotated configuration reference.
-
-## Base Images (`base-images` branch)
-
-All official base image definitions and the master `catalog.yaml` live on the `base-images` branch of this repository. `pokey base` and `pokey up` resolve `base.name` against that branch.

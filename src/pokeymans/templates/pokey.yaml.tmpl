@@ -17,6 +17,13 @@ resources:
   shm_size: null
   network_mode: null
 
+perf:
+  enabled: true
+  gpu_profiling: auto
+  mount_host_perf: false
+  pid_host: false
+  profile_subdir: profiles
+
 run:
   strategy: runtime
   apt: []

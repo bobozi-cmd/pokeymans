@@ -7,13 +7,13 @@ name: demo-service
 mode: run
 
 # Base image resolved from the `base-images` branch catalog by default.
+# Available official images include `ubuntu24-py312` (CPU + py-spy) and
+# `ubuntu24-cuda12-py312` (GPU + CUDA 12.6 + nsys + ncu + py-spy).
 base:
   name: ubuntu24-py312
   tag: latest
-  # Optional overrides for retrieving the base-images catalog:
   repo_url: "git@github.com:bobozi-cmd/pokeymans.git"
   branch: "base-images"
-  # Optional escape hatch: bypass catalog lookup and use a raw Docker image ref directly.
   raw_image: null
 
 # Default log persistence mount (enabled by default).
@@ -29,45 +29,41 @@ resources:
   shm_size: "2g"
   network_mode: null  # e.g. "host" or "bridge"
 
+# Observability & profiling capabilities (enabled by default for both Run and Dev modes).
+# Run `pokey doctor` on the host to verify sysctl and NVIDIA ncu profiling permissions.
+perf:
+  enabled: true             # Injects SYS_PTRACE, PERFMON, and seccomp=unconfined
+  gpu_profiling: auto       # auto: adds SYS_ADMIN + NVIDIA_DRIVER_CAPABILITIES=all when resources.gpus is set
+  mount_host_perf: false    # Opt-in: bind-mount host `perf` binary into /usr/local/bin/perf
+  pid_host: false           # Opt-in: share host PID namespace
+  profile_subdir: profiles  # Creates /var/log/${pod-name}/profiles (exposed as $POKEY_PROFILE_DIR)
+
 # Mode 1: Run Mode configuration.
 run:
-  # Provisioning strategy:
-  #   - "runtime": Scheme B (default) - inject apt/pip/env/entrypoint at container startup.
-  #   - "build":   Scheme A (reserved) - build a derived Docker image from base + layers.
   strategy: runtime
-
   apt:
     - curl
     - vim
   apt_mirror: null
-
   pip:
     - fastapi>=0.115
     - uvicorn
   requirements_file: null
   pip_index_url: null
-
   env_file: null
   env:
     APP_ENV: production
     LOG_LEVEL: info
-
   workdir: /app
   entrypoint: "bash /app/scripts/start.sh"
-
-  # When true, the container starts with full apt/pip/env ready, but skips `entrypoint`.
   debug: false
-
   ports:
     - "8000:8000"
   mounts:
     - "./:/app"
-
-  # Optional host cache directory used by Scheme B runtime bootstrap to speed up apt/pip installs.
   cache_dir: null
 
 # Mode 2: Dev Mode configuration (VS Code Dev Container).
-# No service entrypoint or apt/pip restrictions; users configure freely inside the container.
 dev:
   workspace_host: "."
   workspace_container: "/workspace"

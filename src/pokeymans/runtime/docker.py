@@ -67,6 +67,20 @@ class DockerBackend:
         except ContainerRuntimeError:
             return False
 
+    def info_json(self) -> dict[str, Any] | None:
+        """Return parsed `docker info --format '{{json .}}'` metadata, or None."""
+        try:
+            proc = self._run(
+                ["info", "--format", "{{json .}}"],
+                capture_output=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                return None
+            return json.loads(proc.stdout)
+        except (ContainerRuntimeError, json.JSONDecodeError):
+            return None
+
     def pull(self, image: str) -> None:
         """Pull an image from a remote container registry."""
         self._run(["pull", image], capture_output=False, check=True)
@@ -114,6 +128,13 @@ class DockerBackend:
             args.extend(["--shm-size", spec.shm_size])
         if spec.network_mode:
             args.extend(["--network", spec.network_mode])
+        if spec.pid_mode:
+            args.extend(["--pid", spec.pid_mode])
+
+        for cap in spec.cap_add:
+            args.extend(["--cap-add", cap])
+        for opt in spec.security_opt:
+            args.extend(["--security-opt", opt])
 
         for key, val in spec.env.items():
             args.extend(["-e", f"{key}={val}"])

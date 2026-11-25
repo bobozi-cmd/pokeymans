@@ -1,4 +1,4 @@
-"""Runtime state and container launch specification models."""
+"""Runtime state, container launch specification, and host diagnostics models."""
 
 from __future__ import annotations
 
@@ -36,6 +36,9 @@ class ContainerRunSpec:
     gpus: str | None = None
     shm_size: str | None = None
     network_mode: str | None = None
+    cap_add: list[str] = field(default_factory=list)
+    security_opt: list[str] = field(default_factory=list)
+    pid_mode: str | None = None
     detach: bool = True
 
 
@@ -65,3 +68,13 @@ class PodStatus:
     debug: bool = False
     log_dir_host: str | None = None
     log_dir_container: str | None = None
+
+
+@dataclass(frozen=True)
+class DoctorCheckResult:
+    """Single host readiness check reported by `pokey doctor`."""
+
+    name: str
+    status: str  # "ok" | "warn" | "fail" | "skip"
+    detail: str
+    remediation: str = ""

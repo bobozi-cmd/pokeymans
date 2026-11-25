@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pokeymans.base_images.registry import BaseImageRegistry
 from pokeymans.config.loader import generate_config_template, load_config
+from pokeymans.doctor import run_doctor
 from pokeymans.exceptions import ContainerRuntimeError
 from pokeymans.models.base_image import BaseImageSpec
 from pokeymans.models.config import (
@@ -14,7 +15,7 @@ from pokeymans.models.config import (
     PokeyConfig,
     ProvisionStrategy,
 )
-from pokeymans.models.runtime import PodStatus
+from pokeymans.models.runtime import DoctorCheckResult, PodStatus
 from pokeymans.modes.common import inspect_to_pod_status
 from pokeymans.modes.dev_mode import DevModeController
 from pokeymans.modes.run_mode import RunModeController
@@ -229,3 +230,9 @@ class PokeyClient:
     ) -> str:
         """Pull (or build locally) a base image resolved from the `base-images` branch."""
         return self.registry.pull(name, rebuild=rebuild, sync_first=sync_first)
+
+    # --- Host Diagnostics ---
+
+    def doctor(self, *, check_gpu: bool = False) -> list[DoctorCheckResult]:
+        """Diagnose host readiness for Docker, CPU perf, and NVIDIA nsys/ncu."""
+        return run_doctor(docker=self.docker, check_gpu=check_gpu)

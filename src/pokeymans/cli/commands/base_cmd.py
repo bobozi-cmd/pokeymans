@@ -105,12 +105,12 @@ def handle_base_list(args: argparse.Namespace, client: PokeyClient) -> int:
     if not images:
         print("No base images found.")
         return 0
-    header = f"{'NAME':<24} {'OS':<16} {'PYTHON':<8} {'TAGS':<20} {'DESCRIPTION'}"
+    header = f"{'NAME':<30} {'OS':<22} {'PYTHON':<8} {'TAGS':<26} {'DESCRIPTION'}"
     print(header)
     print("-" * len(header))
     for img in images:
         tags = ",".join(img.tags)
-        print(f"{img.full_name:<24} {img.os:<16} {img.python:<8} {tags:<20} {img.description}")
+        print(f"{img.full_name:<30} {img.os:<22} {img.python:<8} {tags:<26} {img.description}")
     return 0
 
 

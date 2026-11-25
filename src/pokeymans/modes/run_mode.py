@@ -6,13 +6,17 @@ from pokeymans.base_images.registry import BaseImageRegistry
 from pokeymans.config.loader import parse_env_file, parse_mount_string
 from pokeymans.models.config import PodMode, PokeyConfig, ProvisionStrategy
 from pokeymans.models.runtime import ContainerRunSpec, MountSpec, PodStatus
-from pokeymans.modes.common import ensure_host_log_dir, inspect_to_pod_status
+from pokeymans.modes.common import (
+    ensure_host_log_dir,
+    inspect_to_pod_status,
+    resolve_perf_runtime,
+)
 from pokeymans.provisioners import get_provisioner
 from pokeymans.runtime.docker import DockerBackend
 
 
 class RunModeController:
-    """Manages Run Mode pod lifecycle, updates, debug toggling, and default log mount."""
+    """Manages Run Mode pod lifecycle, updates, debug toggling, perf caps, and default log mount."""
 
     def __init__(
         self,
@@ -42,8 +46,10 @@ class RunModeController:
             debug=effective_debug,
             force_refresh=force_refresh,
         )
+        perf_rt = resolve_perf_runtime(config)
 
         merged_env: dict[str, str] = {}
+        merged_env.update(perf_rt.env)
         if config.run.env_file:
             merged_env.update(parse_env_file(config.resolve_path(config.run.env_file)))
         merged_env.update(config.run.env)
@@ -56,6 +62,7 @@ class RunModeController:
 
         for raw_mount in config.run.mounts:
             mounts.append(parse_mount_string(raw_mount, base_dir=config.config_dir))
+        mounts.extend(perf_rt.mounts)
         mounts.extend(prov.extra_mounts)
 
         labels = {
@@ -64,6 +71,7 @@ class RunModeController:
             "pokey.mode": PodMode.RUN.value,
             "pokey.strategy": prov.strategy,
             "pokey.debug": "true" if effective_debug else "false",
+            "pokey.perf": "true" if config.perf.enabled else "false",
             "pokey.base": base_image,
         }
         if log_mount is not None:
@@ -83,6 +91,9 @@ class RunModeController:
             gpus=config.resources.gpus,
             shm_size=config.resources.shm_size,
             network_mode=config.resources.network_mode,
+            cap_add=perf_rt.cap_add,
+            security_opt=perf_rt.security_opt,
+            pid_mode=perf_rt.pid_mode,
             detach=True,
         )
 
@@ -129,11 +140,7 @@ class RunModeController:
         strategy: ProvisionStrategy | None = None,
         reinstall_deps: bool = False,
     ) -> PodStatus:
-        """Apply updated `pokey.yaml` (apt/pip/env/entrypoint/debug) to the Run Mode service.
-
-        Under Scheme B (`runtime`), regenerates the runtime bootstrap manifest and
-        replaces the container while preserving host `/var/log/${pod-name}` logs.
-        """
+        """Apply updated `pokey.yaml` (apt/pip/env/entrypoint/debug) to the Run Mode service."""
         spec = self.build_run_spec(
             config,
             debug=debug,

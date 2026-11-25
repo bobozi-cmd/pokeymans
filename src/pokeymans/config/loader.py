@@ -17,6 +17,7 @@ from pokeymans.models.config import (
     BaseImageRef,
     DevConfig,
     LogMountConfig,
+    PerfConfig,
     PodMode,
     PokeyConfig,
     ProvisionStrategy,
@@ -32,6 +33,7 @@ _KNOWN_TOP_KEYS = {
     "base",
     "logging",
     "resources",
+    "perf",
     "run",
     "dev",
 }
@@ -103,6 +105,27 @@ def _parse_resources(raw: Any) -> ResourceConfig:
     )
 
 
+def _parse_perf(raw: Any) -> PerfConfig:
+    if raw is None:
+        return PerfConfig()
+    if isinstance(raw, bool):
+        return PerfConfig(enabled=raw)
+    if not isinstance(raw, dict):
+        raise ConfigError("`perf` must be a mapping or boolean.")
+    raw_gpu_prof = raw.get("gpu_profiling", "auto")
+    if isinstance(raw_gpu_prof, bool):
+        gpu_profiling = "true" if raw_gpu_prof else "false"
+    else:
+        gpu_profiling = str(raw_gpu_prof).strip().lower()
+    return PerfConfig(
+        enabled=bool(raw.get("enabled", True)),
+        gpu_profiling=gpu_profiling,
+        mount_host_perf=bool(raw.get("mount_host_perf", False)),
+        pid_host=bool(raw.get("pid_host", False)),
+        profile_subdir=str(raw.get("profile_subdir", "profiles") or ""),
+    )
+
+
 def _parse_run(raw: Any) -> RunConfig:
     if raw is None:
         return RunConfig()
@@ -118,7 +141,6 @@ def _parse_run(raw: Any) -> RunConfig:
     raw_pip = raw.get("pip")
     requirements_file = raw.get("requirements_file")
     if isinstance(raw_pip, dict):
-        # Also tolerate nested form: pip: {requirements: ..., packages: [...]}
         if raw_pip.get("requirements") and not requirements_file:
             requirements_file = raw_pip.get("requirements")
         pip_packages = _as_str_list(raw_pip.get("packages"), "run.pip.packages")
@@ -202,6 +224,7 @@ def load_config(path: str | Path = DEFAULT_CONFIG_FILENAME) -> PokeyConfig:
         base=_parse_base(data["base"]),
         logging=_parse_logging(data.get("logging")),
         resources=_parse_resources(data.get("resources")),
+        perf=_parse_perf(data.get("perf")),
         run=_parse_run(data.get("run")),
         dev=_parse_dev(data.get("dev")),
         extra=extra,
@@ -239,6 +262,13 @@ def dump_config(config: PokeyConfig, path: str | Path) -> Path:
             "gpus": config.resources.gpus,
             "shm_size": config.resources.shm_size,
             "network_mode": config.resources.network_mode,
+        },
+        "perf": {
+            "enabled": config.perf.enabled,
+            "gpu_profiling": config.perf.gpu_profiling,
+            "mount_host_perf": config.perf.mount_host_perf,
+            "pid_host": config.perf.pid_host,
+            "profile_subdir": config.perf.profile_subdir,
         },
         "run": {
             "strategy": config.run.strategy.value,
@@ -294,7 +324,6 @@ def generate_config_template(
         .joinpath("pokey.yaml.tmpl")
         .read_text(encoding="utf-8")
     )
-    # Substitute only our placeholders while keeping `${pod-name}` intact in pokey.yaml.
     rendered = (
         template_text.replace("${name}", name)
         .replace("${base_name}", base_name)
@@ -332,11 +361,7 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
 
 def parse_mount_string(raw: str, base_dir: Path | None = None) -> MountSpec:
-    """Parse `source:target[:ro|rw]` into a normalized `MountSpec`.
-
-    Relative host paths (containing `/` or starting with `.` or `~`) are resolved
-    against `base_dir`; bare names without path separators are treated as named volumes.
-    """
+    """Parse `source:target[:ro|rw]` into a normalized `MountSpec`."""
     parts = raw.split(":")
     if len(parts) not in (2, 3):
         raise ConfigError(f"Invalid mount syntax {raw!r}; expected `source:target[:ro|rw]`.")

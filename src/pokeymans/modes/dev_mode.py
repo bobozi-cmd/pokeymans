@@ -13,14 +13,17 @@ from pokeymans.config.loader import parse_mount_string
 from pokeymans.exceptions import ConfigError, ContainerRuntimeError
 from pokeymans.models.config import PodMode, PokeyConfig
 from pokeymans.models.runtime import ContainerRunSpec, MountSpec, PodStatus
-from pokeymans.modes.common import ensure_host_log_dir, inspect_to_pod_status
+from pokeymans.modes.common import (
+    ensure_host_log_dir,
+    inspect_to_pod_status,
+    resolve_perf_runtime,
+)
 from pokeymans.runtime.docker import DockerBackend
 
 
 def _parse_forward_ports(ports: list[str]) -> list[int]:
     result: list[int] = []
     for raw in ports:
-        # Handle forms like "8000:8000", "127.0.0.1:8080:80", or "8000"
         parts = raw.split(":")
         candidate = parts[-1].split("/")[0].strip()
         if candidate.isdigit():
@@ -51,7 +54,8 @@ class DevModeController:
     """Manages Dev Mode containers and VS Code Dev Container integration.
 
     Dev Mode uses the base image directly without service entrypoints or apt/pip locks,
-    giving developers full freedom inside the container while still mounting `/var/log/${pod-name}`.
+    giving developers full freedom inside the container while enabling perf profiling
+    and mounting `/var/log/${pod-name}`.
     """
 
     def __init__(
@@ -77,6 +81,7 @@ class DevModeController:
     def build_run_spec(self, config: PokeyConfig) -> ContainerRunSpec:
         """Build `ContainerRunSpec` for an interactive Dev Mode container."""
         base_image = self.registry.pull(config.base)
+        perf_rt = resolve_perf_runtime(config)
 
         mounts: list[MountSpec] = [
             parse_mount_string(
@@ -101,11 +106,16 @@ class DevModeController:
 
         for raw_mount in config.dev.mounts:
             mounts.append(parse_mount_string(raw_mount, base_dir=config.config_dir))
+        mounts.extend(perf_rt.mounts)
+
+        env = {"POKEY_POD_NAME": config.name, "POKEY_MODE": PodMode.DEV.value}
+        env.update(perf_rt.env)
 
         labels = {
             "pokey.managed": "true",
             "pokey.name": config.name,
             "pokey.mode": PodMode.DEV.value,
+            "pokey.perf": "true" if config.perf.enabled else "false",
             "pokey.base": base_image,
         }
         if log_mount is not None:
@@ -116,7 +126,7 @@ class DevModeController:
             container_name=config.container_name(PodMode.DEV),
             image=base_image,
             workdir=config.dev.workspace_container,
-            env={"POKEY_POD_NAME": config.name, "POKEY_MODE": PodMode.DEV.value},
+            env=env,
             ports=list(config.dev.ports),
             mounts=mounts,
             entrypoint=None,
@@ -125,6 +135,9 @@ class DevModeController:
             gpus=config.resources.gpus,
             shm_size=config.resources.shm_size,
             network_mode=config.resources.network_mode,
+            cap_add=perf_rt.cap_add,
+            security_opt=perf_rt.security_opt,
+            pid_mode=perf_rt.pid_mode,
             detach=True,
         )
 
@@ -163,6 +176,8 @@ class DevModeController:
             raise ConfigError(f"{target} already exists. Pass --force to overwrite.")
 
         base_image = self.registry.pull(config.base)
+        perf_rt = resolve_perf_runtime(config)
+
         if config.dev.persist_home:
             self.docker.ensure_volume(self.home_volume_name(config))
         log_mount = ensure_host_log_dir(config)
@@ -186,6 +201,8 @@ class DevModeController:
                     parse_mount_string(raw_mount, base_dir=config.config_dir)
                 )
             )
+        for perf_mount in perf_rt.mounts:
+            mounts.append(_mount_to_devcontainer_str(perf_mount))
 
         run_args: list[str] = ["--name", config.container_name(PodMode.DEV)]
         if config.resources.gpus:
@@ -194,6 +211,15 @@ class DevModeController:
             run_args.extend(["--shm-size", config.resources.shm_size])
         if config.resources.network_mode:
             run_args.extend(["--network", config.resources.network_mode])
+        if perf_rt.pid_mode:
+            run_args.extend(["--pid", perf_rt.pid_mode])
+        for cap in perf_rt.cap_add:
+            run_args.extend(["--cap-add", cap])
+        for opt in perf_rt.security_opt:
+            run_args.extend(["--security-opt", opt])
+
+        container_env = {"POKEY_POD_NAME": config.name, "POKEY_MODE": PodMode.DEV.value}
+        container_env.update(perf_rt.env)
 
         payload: dict[str, Any] = {
             "name": f"pokey-{config.name}-dev",
@@ -205,6 +231,7 @@ class DevModeController:
             ),
             "overrideCommand": True,
             "runArgs": run_args,
+            "containerEnv": container_env,
         }
         if mounts:
             payload["mounts"] = mounts
@@ -238,7 +265,6 @@ class DevModeController:
             subprocess.run([code_bin, "--folder-uri", uri], check=False)
             return
 
-        # Headless / remote server fallback: start dev container directly for VS Code Attach.
         status = self.up(config, recreate=False)
         print(f"VS Code CLI (`code`) not found on this host; started Dev container `{status.container_name}`.")
         print(f"Connect from local VS Code via Remote-SSH -> Dev Containers: Attach to `{status.container_name}`.")
@@ -273,7 +299,10 @@ class DevModeController:
         base_image = str((info.get("Config") or {}).get("Image") or "")
 
         dev_pip = _parse_pkg_lines(
-            self._safe_exec_capture(cname, ["bash", "-lc", "python3 -m pip freeze 2>/dev/null || pip freeze 2>/dev/null || true"])
+            self._safe_exec_capture(
+                cname,
+                ["bash", "-lc", "python3 -m pip freeze 2>/dev/null || pip freeze 2>/dev/null || true"],
+            )
         )
         dev_apt = _parse_pkg_lines(
             self._safe_exec_capture(cname, ["bash", "-lc", "apt-mark showmanual 2>/dev/null || true"])

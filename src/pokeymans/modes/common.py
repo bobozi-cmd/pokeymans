@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -10,8 +12,53 @@ from pokeymans.models.config import PodMode, PokeyConfig
 from pokeymans.models.runtime import MountSpec, PodStatus
 
 
+@dataclass
+class PerfRuntimeSettings:
+    """Resolved runtime flags, env vars, and mounts derived from `config.perf`."""
+
+    cap_add: list[str] = field(default_factory=list)
+    security_opt: list[str] = field(default_factory=list)
+    pid_mode: str | None = None
+    env: dict[str, str] = field(default_factory=dict)
+    mounts: list[MountSpec] = field(default_factory=list)
+
+
+def resolve_perf_runtime(config: PokeyConfig) -> PerfRuntimeSettings:
+    """Compute container capabilities, seccomp, env, and optional host perf mount."""
+    has_gpus = bool(config.resources.gpus)
+    log_mount = config.effective_log_mount()
+    log_container_dir = log_mount.target if log_mount else None
+
+    cap_add = config.perf.resolve_capabilities(has_gpus=has_gpus)
+    security_opt = config.perf.resolve_security_opts()
+    pid_mode = "host" if (config.perf.enabled and config.perf.pid_host) else None
+    env = config.perf.resolve_env(has_gpus=has_gpus, log_container_dir=log_container_dir)
+
+    mounts: list[MountSpec] = []
+    if config.perf.enabled and config.perf.mount_host_perf:
+        perf_bin = shutil.which("perf")
+        if perf_bin:
+            resolved_perf = Path(perf_bin).resolve()
+            if resolved_perf.is_file():
+                mounts.append(
+                    MountSpec(
+                        source=str(resolved_perf),
+                        target="/usr/local/bin/perf",
+                        read_only=True,
+                    )
+                )
+
+    return PerfRuntimeSettings(
+        cap_add=cap_add,
+        security_opt=security_opt,
+        pid_mode=pid_mode,
+        env=env,
+        mounts=mounts,
+    )
+
+
 def ensure_host_log_dir(config: PokeyConfig) -> MountSpec | None:
-    """Ensure the host `/var/log/${pod-name}` directory exists if log mounting is enabled."""
+    """Ensure host `/var/log/${pod-name}` (and optional profiles subdir) exists."""
     mount = config.effective_log_mount()
     if mount is None:
         return None
@@ -19,6 +66,10 @@ def ensure_host_log_dir(config: PokeyConfig) -> MountSpec | None:
         host_path = Path(mount.source)
         try:
             host_path.mkdir(parents=True, exist_ok=True)
+            if config.perf.enabled and config.perf.profile_subdir:
+                (host_path / config.perf.profile_subdir.lstrip("/")).mkdir(
+                    parents=True, exist_ok=True
+                )
         except PermissionError as exc:
             raise ProvisionError(
                 f"Permission denied creating host log directory {host_path}. "

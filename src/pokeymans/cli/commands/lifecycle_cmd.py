@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+from dataclasses import asdict
 
 from pokeymans.client import PokeyClient
 from pokeymans.models.config import (
@@ -10,6 +12,7 @@ from pokeymans.models.config import (
     PodMode,
     ProvisionStrategy,
 )
+from pokeymans.models.runtime import PodStatus
 
 
 def _add_config_flag(parser: argparse.ArgumentParser) -> None:
@@ -19,6 +22,15 @@ def _add_config_flag(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_CONFIG_FILENAME,
         help=f"Path to pokey configuration file (default: {DEFAULT_CONFIG_FILENAME}).",
     )
+
+
+def _print_pod_summary(action: str, status: PodStatus) -> None:
+    print(f"[{action}] {status.container_name} ({status.mode} mode) -> {status.status_text}")
+    print(f"  image : {status.image}")
+    if status.mode == PodMode.RUN.value:
+        print(f"  debug : {'enabled (entrypoint skipped)' if status.debug else 'disabled'}")
+    if status.log_dir_host and status.log_dir_container:
+        print(f"  logs  : {status.log_dir_host} -> {status.log_dir_container}")
 
 
 def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -172,60 +184,77 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
 
 
 def handle_up(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Render clean summary table (container name, mode, debug, /var/log/${pod-name} mount).
     config = client.load_config(args.config)
     mode = PodMode(args.mode) if args.mode else None
     strategy = ProvisionStrategy(args.strategy) if args.strategy else None
-    client.up(
+    status = client.up(
         config,
         mode=mode,
         debug=args.debug,
         strategy=strategy,
         recreate=args.recreate,
     )
+    _print_pod_summary("UP", status)
     return 0
 
 
 def handle_update(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Display updated service status and diff summary.
     config = client.load_config(args.config)
     strategy = ProvisionStrategy(args.strategy) if args.strategy else None
-    client.update(
+    status = client.update(
         config,
         debug=args.debug,
         strategy=strategy,
         reinstall_deps=args.reinstall_deps,
     )
+    _print_pod_summary("UPDATED", status)
     return 0
 
 
 def handle_down(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Print stopped/removed containers.
     config = client.load_config(args.config)
     all_modes = args.mode == "all"
     mode = None if (args.mode is None or all_modes) else PodMode(args.mode)
-    client.down(
+    removed = client.down(
         config,
         mode=mode,
         all_modes=all_modes,
         purge_volumes=args.purge_volumes,
     )
+    if removed:
+        print("Removed containers: " + ", ".join(removed))
+    else:
+        print("No matching containers found.")
     return 0
 
 
 def handle_status(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Format status output as table or JSON (`--json`).
     config = client.load_config(args.config)
     all_modes = args.mode == "all"
     mode = None if all_modes else PodMode(args.mode)
-    client.status(config, mode=mode, all_modes=all_modes)
+    statuses = client.status(config, mode=mode, all_modes=all_modes)
+
+    if args.as_json:
+        print(json.dumps([asdict(s) for s in statuses], indent=2))
+        return 0
+
+    header = f"{'CONTAINER':<28} {'MODE':<6} {'STATUS':<14} {'DEBUG':<7} {'IMAGE':<30} {'LOG DIR'}"
+    print(header)
+    print("-" * len(header))
+    for s in statuses:
+        debug_str = "yes" if s.debug else "no"
+        log_str = s.log_dir_host or "-"
+        img_str = s.image or "-"
+        print(f"{s.container_name:<28} {s.mode:<6} {s.status_text:<14} {debug_str:<7} {img_str:<30} {log_str}")
     return 0
 
 
 def handle_logs(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Also print host log directory `/var/log/${pod-name}` hint.
     config = client.load_config(args.config)
     mode = PodMode(args.mode) if args.mode else None
+    log_mount = config.effective_log_mount()
+    if log_mount is not None:
+        print(f"[pokeymans] Persisted log directory on host: {log_mount.source}")
     client.logs(config, mode=mode, follow=args.follow, tail=args.tail)
     return 0
 

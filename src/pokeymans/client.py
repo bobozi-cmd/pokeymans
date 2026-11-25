@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pokeymans.base_images.registry import BaseImageRegistry
 from pokeymans.config.loader import generate_config_template, load_config
+from pokeymans.exceptions import ContainerRuntimeError
 from pokeymans.models.base_image import BaseImageSpec
 from pokeymans.models.config import (
     DEFAULT_CONFIG_FILENAME,
@@ -14,6 +15,7 @@ from pokeymans.models.config import (
     ProvisionStrategy,
 )
 from pokeymans.models.runtime import PodStatus
+from pokeymans.modes.common import inspect_to_pod_status
 from pokeymans.modes.dev_mode import DevModeController
 from pokeymans.modes.run_mode import RunModeController
 from pokeymans.runtime.docker import DockerBackend
@@ -101,15 +103,28 @@ class PokeyClient:
         mode: PodMode | None = None,
         all_modes: bool = False,
         purge_volumes: bool = False,
-    ) -> None:
-        """Stop and remove pod container(s).
+    ) -> list[str]:
+        """Stop and remove pod container(s), returning names of removed containers."""
+        target_modes = [PodMode.RUN, PodMode.DEV] if all_modes else [mode or config.mode]
+        removed: list[str] = []
 
-        TODO:
-            1. Resolve target mode(s): `[PodMode.RUN, PodMode.DEV]` if `all_modes` else `[mode or config.mode]`.
-            2. Stop and remove containers via `self.docker`.
-            3. Remove dev persistent home volume only if `purge_volumes=True` (never auto-delete `/var/log/${pod-name}`).
-        """
-        raise NotImplementedError("TODO: implement PokeyClient.down")
+        for active_mode in target_modes:
+            cname = config.container_name(active_mode)
+            info = self.docker.inspect(cname)
+            if info:
+                if (info.get("State") or {}).get("Running"):
+                    self.docker.stop(cname)
+                self.docker.remove(cname, force=True)
+                removed.append(cname)
+
+            if purge_volumes and active_mode == PodMode.DEV and config.dev.persist_home:
+                vol = DevModeController.home_volume_name(config)
+                try:
+                    self.docker.remove_volume(vol, force=True)
+                except ContainerRuntimeError:
+                    pass
+
+        return removed
 
     def status(
         self,
@@ -118,11 +133,14 @@ class PokeyClient:
         mode: PodMode | None = None,
         all_modes: bool = False,
     ) -> list[PodStatus]:
-        """Return live status of pod container(s), including resolved `/var/log/${pod-name}` paths.
-
-        TODO: Inspect target container(s) via `self.docker.inspect()` and map to `PodStatus`.
-        """
-        raise NotImplementedError("TODO: implement PokeyClient.status")
+        """Return live status of pod container(s), including resolved `/var/log/${pod-name}` paths."""
+        target_modes = [PodMode.RUN, PodMode.DEV] if all_modes else [mode or config.mode]
+        statuses: list[PodStatus] = []
+        for active_mode in target_modes:
+            cname = config.container_name(active_mode)
+            info = self.docker.inspect(cname)
+            statuses.append(inspect_to_pod_status(config, active_mode, info))
+        return statuses
 
     def logs(
         self,
@@ -132,11 +150,14 @@ class PokeyClient:
         follow: bool = False,
         tail: int | None = None,
     ) -> None:
-        """Stream container logs for the specified pod mode.
-
-        TODO: Delegate to `self.docker.logs(config.container_name(active_mode), ...)`.
-        """
-        raise NotImplementedError("TODO: implement PokeyClient.logs")
+        """Stream container logs for the specified pod mode."""
+        active_mode = mode or config.mode
+        cname = config.container_name(active_mode)
+        if not self.docker.inspect(cname):
+            raise ContainerRuntimeError(
+                f"Container `{cname}` does not exist. Start it first with `pokey up --mode {active_mode.value}`."
+            )
+        self.docker.logs(cname, follow=follow, tail=tail)
 
     def exec(
         self,
@@ -145,11 +166,15 @@ class PokeyClient:
         *,
         mode: PodMode | None = None,
     ) -> int:
-        """Execute an interactive command (defaults to `["bash"]`) inside the pod container.
-
-        TODO: Delegate to `self.docker.exec(config.container_name(active_mode), command or ["bash"])`.
-        """
-        raise NotImplementedError("TODO: implement PokeyClient.exec")
+        """Execute an interactive command (defaults to `["bash"]`) inside the pod container."""
+        active_mode = mode or config.mode
+        cname = config.container_name(active_mode)
+        info = self.docker.inspect(cname)
+        if not info or not (info.get("State") or {}).get("Running"):
+            raise ContainerRuntimeError(
+                f"Container `{cname}` is not running. Start it with `pokey up --mode {active_mode.value}`."
+            )
+        return self.docker.exec(cname, command or ["bash"])
 
     # --- Dev Mode Helpers ---
 

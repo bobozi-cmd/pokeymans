@@ -20,7 +20,7 @@ def register(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) ->
     )
     parser.add_argument(
         "--base",
-        default="ubuntu24-py312",
+        required=True,
         help="Base image name from the `base-images` branch catalog.",
     )
     parser.add_argument(

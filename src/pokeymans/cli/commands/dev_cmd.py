@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import yaml
+
 from pokeymans.client import PokeyClient
 from pokeymans.models.config import DEFAULT_CONFIG_FILENAME
 
@@ -117,7 +119,8 @@ def handle_dev_snapshot(args: argparse.Namespace, client: PokeyClient) -> int:
 
 
 def handle_dev_export(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Render exported apt/pip dict as YAML snippet.
     config = client.load_config(args.config)
-    client.dev_export(config)
+    exported = client.dev_export(config)
+    snippet = {"run": {"apt": exported["apt"], "pip": exported["pip"]}}
+    print(yaml.safe_dump(snippet, sort_keys=False, allow_unicode=True))
     return 0

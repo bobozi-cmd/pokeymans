@@ -100,16 +100,30 @@ def handle_base_sync(args: argparse.Namespace, client: PokeyClient) -> int:
 
 
 def handle_base_list(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Render formatted table of available base images.
     _apply_registry_overrides(args, client)
-    client.base_list(tag_filter=args.tag_filter)
+    images = client.base_list(tag_filter=args.tag_filter)
+    if not images:
+        print("No base images found.")
+        return 0
+    header = f"{'NAME':<24} {'OS':<16} {'PYTHON':<8} {'TAGS':<20} {'DESCRIPTION'}"
+    print(header)
+    print("-" * len(header))
+    for img in images:
+        tags = ",".join(img.tags)
+        print(f"{img.full_name:<24} {img.os:<16} {img.python:<8} {tags:<20} {img.description}")
     return 0
 
 
 def handle_base_info(args: argparse.Namespace, client: PokeyClient) -> int:
-    # TODO: Pretty-print BaseImageSpec fields.
     _apply_registry_overrides(args, client)
-    client.base_info(args.name)
+    img = client.base_info(args.name)
+    print(f"Name         : {img.full_name}")
+    print(f"Description  : {img.description}")
+    print(f"OS           : {img.os}")
+    print(f"Python       : {img.python}")
+    print(f"Dockerfile   : {img.dockerfile}")
+    print(f"Registry Ref : {img.registry_ref or '(local build -> ' + img.local_image_ref + ')'}")
+    print(f"Tags         : {', '.join(img.tags) if img.tags else '-'}")
     return 0
 
 

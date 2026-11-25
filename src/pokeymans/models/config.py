@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from pokeymans.models.runtime import MountSpec
@@ -12,6 +14,8 @@ DEFAULT_CONFIG_FILENAME = "pokey.yaml"
 DEFAULT_LOG_DIR_TEMPLATE = "/var/log/${pod-name}"
 DEFAULT_BASE_IMAGES_REPO = "git@github.com:bobozi-cmd/pokeymans.git"
 DEFAULT_BASE_IMAGES_BRANCH = "base-images"
+
+_POD_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]*$")
 
 
 class PodMode(str, Enum):
@@ -125,6 +129,7 @@ class PokeyConfig:
     run: RunConfig = field(default_factory=RunConfig)
     dev: DevConfig = field(default_factory=DevConfig)
     extra: dict[str, Any] = field(default_factory=dict)
+    config_dir: Path | None = field(default=None, repr=False, compare=False)
 
     def container_name(self, mode: PodMode | None = None) -> str:
         """Return deterministic container name isolated by pod name and mode."""
@@ -135,13 +140,29 @@ class PokeyConfig:
         """Return the resolved default `/var/log/${pod-name}` mount specification."""
         return self.logging.resolve_mount(self.name)
 
-    def validate(self) -> None:
-        """Validate configuration invariants.
+    def resolve_path(self, raw_path: str) -> Path:
+        """Resolve a path relative to the directory containing `pokey.yaml`."""
+        p = Path(raw_path).expanduser()
+        if p.is_absolute():
+            return p
+        base_dir = self.config_dir or Path.cwd()
+        return (base_dir / p).resolve()
 
-        TODO: Expand validation rules (pod name charset, port format, mount syntax,
-        requirements_file/env_file existence checks, etc.).
-        """
+    def validate(self) -> None:
+        """Validate configuration invariants."""
         if not self.name or not self.name.strip():
             raise ValueError("`name` must be a non-empty string.")
+        if not _POD_NAME_RE.match(self.name):
+            raise ValueError(
+                f"Invalid pod name {self.name!r}: must start with alphanumeric and "
+                "contain only [a-zA-Z0-9_.-]."
+            )
         if not self.base.name and not self.base.raw_image:
             raise ValueError("Either `base.name` or `base.raw_image` must be set.")
+        if self.logging.enabled:
+            if not self.logging.host_dir or not self.logging.container_dir:
+                raise ValueError("`logging.host_dir` and `logging.container_dir` must be non-empty.")
+        if not self.dev.workspace_container.startswith("/"):
+            raise ValueError("`dev.workspace_container` must be an absolute container path.")
+        if not self.run.workdir.startswith("/"):
+            raise ValueError("`run.workdir` must be an absolute container path.")

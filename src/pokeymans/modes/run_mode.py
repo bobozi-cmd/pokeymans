@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pokeymans.base_images.registry import BaseImageRegistry
-from pokeymans.models.config import PokeyConfig, ProvisionStrategy
-from pokeymans.models.runtime import ContainerRunSpec, PodStatus
+from pokeymans.config.loader import parse_env_file, parse_mount_string
+from pokeymans.models.config import PodMode, PokeyConfig, ProvisionStrategy
+from pokeymans.models.runtime import ContainerRunSpec, MountSpec, PodStatus
+from pokeymans.modes.common import ensure_host_log_dir, inspect_to_pod_status
 from pokeymans.provisioners import get_provisioner
 from pokeymans.runtime.docker import DockerBackend
 
@@ -28,19 +30,74 @@ class RunModeController:
         strategy: ProvisionStrategy | None = None,
         force_refresh: bool = False,
     ) -> ContainerRunSpec:
-        """Assemble the complete `ContainerRunSpec` for Run Mode.
+        """Assemble the complete `ContainerRunSpec` for Run Mode."""
+        effective_debug = config.run.debug if debug is None else debug
+        effective_strategy = strategy or config.run.strategy
 
-        TODO:
-            1. Resolve & pull base image from `base-images` branch via `self.registry.pull(config.base)`.
-            2. Select provisioner (`strategy or config.run.strategy`, defaults to Scheme B `runtime`).
-            3. Call `provisioner.prepare(config, base_image, debug=effective_debug, force_refresh=...)`.
-            4. Attach default log mount (`config.effective_log_mount()` -> `/var/log/${pod-name}`)
-               and ensure host log directory exists.
-            5. Merge user-configured `config.run.mounts`, `ports`, `env`/`env_file`, `resources`,
-               and container labels (`pokey.name`, `pokey.mode=run`, `pokey.debug`).
-        """
-        _ = get_provisioner(strategy or config.run.strategy, docker=self.docker)
-        raise NotImplementedError("TODO: implement RunModeController.build_run_spec")
+        base_image = self.registry.pull(config.base)
+        provisioner = get_provisioner(effective_strategy, docker=self.docker)
+        prov = provisioner.prepare(
+            config,
+            base_image,
+            debug=effective_debug,
+            force_refresh=force_refresh,
+        )
+
+        merged_env: dict[str, str] = {}
+        if config.run.env_file:
+            merged_env.update(parse_env_file(config.resolve_path(config.run.env_file)))
+        merged_env.update(config.run.env)
+        merged_env.update(prov.extra_env)
+
+        mounts: list[MountSpec] = []
+        log_mount = config.effective_log_mount()
+        if log_mount is not None:
+            mounts.append(log_mount)
+
+        for raw_mount in config.run.mounts:
+            mounts.append(parse_mount_string(raw_mount, base_dir=config.config_dir))
+        mounts.extend(prov.extra_mounts)
+
+        labels = {
+            "pokey.managed": "true",
+            "pokey.name": config.name,
+            "pokey.mode": PodMode.RUN.value,
+            "pokey.strategy": prov.strategy,
+            "pokey.debug": "true" if effective_debug else "false",
+            "pokey.base": base_image,
+        }
+        if log_mount is not None:
+            labels["pokey.log_host"] = log_mount.source
+            labels["pokey.log_container"] = log_mount.target
+
+        return ContainerRunSpec(
+            container_name=config.container_name(PodMode.RUN),
+            image=prov.image,
+            workdir=config.run.workdir,
+            env=merged_env,
+            ports=list(config.run.ports),
+            mounts=mounts,
+            entrypoint=prov.entrypoint,
+            command=prov.command,
+            labels=labels,
+            gpus=config.resources.gpus,
+            shm_size=config.resources.shm_size,
+            network_mode=config.resources.network_mode,
+            detach=True,
+        )
+
+    def _replace_and_start(self, config: PokeyConfig, spec: ContainerRunSpec) -> PodStatus:
+        cname = spec.container_name
+        existing = self.docker.inspect(cname)
+        if existing:
+            if (existing.get("State") or {}).get("Running"):
+                self.docker.stop(cname)
+            self.docker.remove(cname, force=True)
+
+        ensure_host_log_dir(config)
+        self.docker.run(spec)
+        info = self.docker.inspect(cname)
+        return inspect_to_pod_status(config, PodMode.RUN, info)
 
     def up(
         self,
@@ -50,14 +107,19 @@ class RunModeController:
         strategy: ProvisionStrategy | None = None,
         recreate: bool = False,
     ) -> PodStatus:
-        """Start the Run Mode pod container (creating it if needed).
+        """Start the Run Mode pod container (creating it if needed)."""
+        cname = config.container_name(PodMode.RUN)
+        existing = self.docker.inspect(cname)
+        if existing and (existing.get("State") or {}).get("Running") and not recreate:
+            return inspect_to_pod_status(config, PodMode.RUN, existing)
 
-        TODO:
-            1. Check existing container via `self.docker.inspect(config.container_name(PodMode.RUN))`.
-            2. If running and not `recreate`, return status (or inform user to use `pokey update`).
-            3. Otherwise remove old container if present, build spec, start container, and return `PodStatus`.
-        """
-        raise NotImplementedError("TODO: implement RunModeController.up")
+        spec = self.build_run_spec(
+            config,
+            debug=debug,
+            strategy=strategy,
+            force_refresh=False,
+        )
+        return self._replace_and_start(config, spec)
 
     def update(
         self,
@@ -69,11 +131,13 @@ class RunModeController:
     ) -> PodStatus:
         """Apply updated `pokey.yaml` (apt/pip/env/entrypoint/debug) to the Run Mode service.
 
-        TODO:
-            1. For Scheme B (`runtime`): regenerate runtime manifest, stop/replace container
-               (or trigger in-container reload when only env/entrypoint changed).
-            2. For Scheme A (`build`): compute layer hash, rebuild only if apt/pip/base changed,
-               then recreate container.
-            3. Preserve `/var/log/${pod-name}` logs across updates.
+        Under Scheme B (`runtime`), regenerates the runtime bootstrap manifest and
+        replaces the container while preserving host `/var/log/${pod-name}` logs.
         """
-        raise NotImplementedError("TODO: implement RunModeController.update")
+        spec = self.build_run_spec(
+            config,
+            debug=debug,
+            strategy=strategy,
+            force_refresh=reinstall_deps,
+        )
+        return self._replace_and_start(config, spec)

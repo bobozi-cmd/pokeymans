@@ -10,7 +10,7 @@ from pokeymans import (
     PokeyConfig,
     ProvisionStrategy,
 )
-from pokeymans.cli.main import build_parser, main
+from pokeymans.cli.main import build_parser
 from pokeymans.provisioners import (
     ImageBuildProvisioner,
     RuntimeBootstrapProvisioner,
@@ -55,7 +55,7 @@ class TestModelsAndDefaults(unittest.TestCase):
         self.assertEqual(ref.full_name, "ubuntu24-py312:latest")
 
 
-class TestCliParsingAndStubs(unittest.TestCase):
+class TestCliParsingAndApi(unittest.TestCase):
     def test_cli_parses_all_top_level_commands(self) -> None:
         parser = build_parser()
         cases = [
@@ -78,10 +78,6 @@ class TestCliParsingAndStubs(unittest.TestCase):
         for argv in cases:
             args = parser.parse_args(argv)
             self.assertTrue(callable(getattr(args, "handler", None)), f"No handler for {argv}")
-
-    def test_stub_command_exits_with_not_implemented_code(self) -> None:
-        rc = main(["base", "list"])
-        self.assertEqual(rc, 2)
 
     def test_client_exposes_expected_api(self) -> None:
         client = PokeyClient()

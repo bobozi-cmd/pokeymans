@@ -1,0 +1,26 @@
+name: "ubuntu24-cuda128-llm-py312"
+tag: "latest"
+os: "ubuntu:24.04-cuda12.8"
+python: "3.12"
+cuda: "12.8.1"
+cuda_architectures: "12.0"
+venv: "/opt/venv"
+dev_user: "dev"
+maintainer: "pokeymans"
+description: "LLM GPU base image for RTX 50 series (sm_120): CUDA 12.8.1, PyTorch 2.7.1+cu128, Triton, flash-attn, nsys, ncu, py-spy"
+registry_ref: ""
+architectures:
+  - linux/amd64
+perf_tools:
+  - py-spy
+  - nsys
+  - ncu
+  - nvidia-smi
+  - htop
+  - sysstat
+  - strace
+  - gdb
+preinstalled_ml_packages:
+  - torch==2.7.1+cu128
+  - triton>=3.0.0
+  - flash-attn

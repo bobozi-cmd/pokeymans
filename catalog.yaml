@@ -31,3 +31,21 @@ images:
       - gpu
       - cuda
       - perf
+
+  - name: "ubuntu24-cuda128-llm-py312"
+    tag: "latest"
+    description: "Ubuntu 24.04 + CUDA 12.8.1 (RTX 50/sm_120) + PyTorch 2.7.1 + Triton + flash-attn + nsys/ncu/py-spy"
+    dockerfile: "images/ubuntu24-cuda128-llm-py312/Dockerfile"
+    meta: "images/ubuntu24-cuda128-llm-py312/meta.yaml"
+    registry_ref: ""
+    os: "ubuntu:24.04-cuda12.8"
+    python: "3.12"
+    tags:
+      - ubuntu
+      - python
+      - gpu
+      - cuda
+      - cuda12.8
+      - blackwell
+      - llm
+      - perf

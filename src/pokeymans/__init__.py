@@ -25,10 +25,11 @@ from pokeymans.models import (
     RunConfig,
 )
 
-__version__ = "0.1.0"
+from pokeymans._version import __commit__, __version__
 
 __all__ = [
     "__version__",
+    "__commit__",
     "PokeyClient",
     "PokeyConfig",
     "PodMode",

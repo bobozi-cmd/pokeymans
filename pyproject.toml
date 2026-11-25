@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pokeymans"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Lightweight pod environment builder supporting Run Mode (runtime bootstrap / image build) and VS Code Dev Container Mode."
 readme = "README.md"
 license = "MIT"

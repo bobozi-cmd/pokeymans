@@ -2,21 +2,36 @@
 
 This branch is the central catalog and Dockerfile repository for `pokeymans` base images.
 
+## Available Images
+
+| Image | OS | Python | Profiling / Perf Toolchain |
+| :--- | :--- | :--- | :--- |
+| `ubuntu24-py312:latest` | Ubuntu 24.04 | 3.12 | `py-spy`, `htop`, `sysstat` (`mpstat`/`iostat`), `procps`, `strace`, `gdb` |
+| `ubuntu24-cuda12-py312:latest` | Ubuntu 24.04 + CUDA 12.6 | 3.12 | All CPU perf tools + NVIDIA `nsys` (Nsight Systems) + `ncu` (Nsight Compute) |
+
 ## Layout
 
 ```text
 .
-├── catalog.yaml                  # Master index queried by `pokey base list/info/pull`
+├── catalog.yaml                        # Master index queried by `pokey base list/info/pull`
 └── images/
-    └── <image-name>/
-        ├── Dockerfile            # Base image build definition
-        └── meta.yaml             # Image metadata (OS, Python, tags, registry ref)
+    ├── ubuntu24-py312/
+    │   ├── Dockerfile
+    │   └── meta.yaml
+    └── ubuntu24-cuda12-py312/
+        ├── Dockerfile
+        └── meta.yaml
 ```
 
-## How `pokeymans` uses this branch
+## Profiling Quick Examples Inside a Pokey Pod
 
-1. `pokey base sync` fetches/updates this `base-images` branch into the local cache (`~/.cache/pokeymans/base-images`).
-2. `pokey base list` / `pokey base info <name>` reads `catalog.yaml`.
-3. `pokey base pull <name>` resolves `<name>` from `catalog.yaml`:
-   - If `registry_ref` is set, pulls the pre-built image from the container registry.
-   - Otherwise, builds locally from the referenced `Dockerfile` and tags it as `pokeymans-base/<name>:<tag>`.
+```bash
+# Python CPU flamegraph (saved directly into persisted /var/log/${POKEY_POD_NAME}/profiles)
+py-spy record -o "${POKEY_PROFILE_DIR:-/tmp}/flame.svg" --pid <PID> --duration 30
+
+# NVIDIA Nsight Systems timeline trace (GPU base image)
+nsys profile -o "${POKEY_PROFILE_DIR:-/tmp}/trace" --trace=cuda,nvtx,osrt <command>
+
+# NVIDIA Nsight Compute kernel analysis (GPU base image)
+ncu -o "${POKEY_PROFILE_DIR:-/tmp}/kernel" --set full <command>
+```

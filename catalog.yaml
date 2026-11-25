@@ -5,13 +5,29 @@ branch: "base-images"
 images:
   - name: "ubuntu24-py312"
     tag: "latest"
-    description: "Ubuntu 24.04 LTS with Python 3.12 and common base utilities"
+    description: "Ubuntu 24.04 + Python 3.12 with CPU observability & py-spy flamegraph tools"
     dockerfile: "images/ubuntu24-py312/Dockerfile"
     meta: "images/ubuntu24-py312/meta.yaml"
-    registry_ref: ""  # Optional: prebuilt image ref, e.g. ghcr.io/bobozi-cmd/pokeymans-ubuntu24-py312:latest
+    registry_ref: ""
     os: "ubuntu:24.04"
     python: "3.12"
     tags:
       - ubuntu
       - python
       - cpu
+      - perf
+
+  - name: "ubuntu24-cuda12-py312"
+    tag: "latest"
+    description: "Ubuntu 24.04 + CUDA 12.6 + Python 3.12 with CPU perf, nsys, and ncu"
+    dockerfile: "images/ubuntu24-cuda12-py312/Dockerfile"
+    meta: "images/ubuntu24-cuda12-py312/meta.yaml"
+    registry_ref: ""
+    os: "ubuntu:24.04-cuda12.6"
+    python: "3.12"
+    tags:
+      - ubuntu
+      - python
+      - gpu
+      - cuda
+      - perf

@@ -1,0 +1,19 @@
+name: "ubuntu24-cuda12-py312"
+tag: "latest"
+os: "ubuntu:24.04-cuda12.6"
+python: "3.12"
+cuda: "12.6"
+maintainer: "pokeymans"
+description: "Ubuntu 24.04 + CUDA 12.6 + Python 3.12 with CPU perf, nsys (Nsight Systems), and ncu (Nsight Compute)"
+registry_ref: ""
+architectures:
+  - linux/amd64
+perf_tools:
+  - py-spy
+  - nsys
+  - ncu
+  - nvidia-smi
+  - htop
+  - sysstat
+  - strace
+  - gdb

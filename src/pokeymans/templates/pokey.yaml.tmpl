@@ -9,7 +9,7 @@ base:
 
 logging:
   enabled: true
-  host_dir: "/var/log/${pod-name}"
+  host_dir: "~/.local/state/pokeymans/logs/${pod-name}"
   container_dir: "/var/log/${pod-name}"
 
 resources:

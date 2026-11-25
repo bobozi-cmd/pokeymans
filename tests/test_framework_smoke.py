@@ -1,6 +1,7 @@
 """Framework smoke tests verifying models, defaults, CLI wiring, and API contracts."""
 
 import unittest
+from pathlib import Path
 
 from pokeymans import (
     BaseImageRef,
@@ -24,9 +25,10 @@ class TestModelsAndDefaults(unittest.TestCase):
         mount = cfg.effective_log_mount()
         self.assertIsNotNone(mount)
         assert mount is not None
-        self.assertEqual(mount.source, "/var/log/orders-api")
+        expected_host = str(Path.home() / ".local/state/pokeymans/logs/orders-api")
+        self.assertEqual(mount.source, expected_host)
         self.assertEqual(mount.target, "/var/log/orders-api")
-        self.assertEqual(mount.to_docker_flag(), "/var/log/orders-api:/var/log/orders-api")
+        self.assertEqual(mount.to_docker_flag(), f"{expected_host}:/var/log/orders-api")
 
     def test_disabled_log_mount_returns_none(self) -> None:
         cfg = PokeyConfig(

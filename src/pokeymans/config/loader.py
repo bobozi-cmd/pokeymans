@@ -13,6 +13,7 @@ from pokeymans.models.config import (
     DEFAULT_BASE_IMAGES_BRANCH,
     DEFAULT_BASE_IMAGES_REPO,
     DEFAULT_CONFIG_FILENAME,
+    DEFAULT_HOST_LOG_DIR_TEMPLATE,
     DEFAULT_LOG_DIR_TEMPLATE,
     BaseImageRef,
     DevConfig,
@@ -81,7 +82,7 @@ def _parse_logging(raw: Any) -> LogMountConfig:
         raise ConfigError("`logging` must be a mapping.")
     return LogMountConfig(
         enabled=bool(raw.get("enabled", True)),
-        host_dir=str(raw.get("host_dir", DEFAULT_LOG_DIR_TEMPLATE)),
+        host_dir=str(raw.get("host_dir", DEFAULT_HOST_LOG_DIR_TEMPLATE)),
         container_dir=str(raw.get("container_dir", DEFAULT_LOG_DIR_TEMPLATE)),
     )
 

@@ -5,6 +5,7 @@ from pokeymans.models.config import (
     DEFAULT_BASE_IMAGES_BRANCH,
     DEFAULT_BASE_IMAGES_REPO,
     DEFAULT_CONFIG_FILENAME,
+    DEFAULT_HOST_LOG_DIR_TEMPLATE,
     DEFAULT_LOG_DIR_TEMPLATE,
     BaseImageRef,
     DevConfig,
@@ -26,6 +27,7 @@ from pokeymans.models.runtime import (
 
 __all__ = [
     "DEFAULT_CONFIG_FILENAME",
+    "DEFAULT_HOST_LOG_DIR_TEMPLATE",
     "DEFAULT_LOG_DIR_TEMPLATE",
     "DEFAULT_BASE_IMAGES_REPO",
     "DEFAULT_BASE_IMAGES_BRANCH",

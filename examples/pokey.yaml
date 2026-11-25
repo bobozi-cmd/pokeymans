@@ -20,7 +20,7 @@ base:
 # `${pod-name}` is automatically expanded to `name` above (e.g. `/var/log/demo-service`).
 logging:
   enabled: true
-  host_dir: "/var/log/${pod-name}"
+  host_dir: "~/.local/state/pokeymans/logs/${pod-name}"
   container_dir: "/var/log/${pod-name}"
 
 # Shared container resources (optional).

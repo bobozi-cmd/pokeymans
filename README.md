@@ -6,7 +6,7 @@ A lightweight Python pod environment builder packaged as a `.whl` with two modes
 2. **Dev Mode (`dev`)**: Uses a clean base image for **VS Code Dev Containers** without imposing service entrypoints or dependency constraints, allowing users to configure the container freely.
 3. **Built-in Perf & GPU Profiling (`perf`)**: Enabled by default in both Run and Dev modes (`SYS_PTRACE`, `PERFMON`, `seccomp=unconfined`, plus `SYS_ADMIN` & `NVIDIA_DRIVER_CAPABILITIES=all` when GPUs are attached). Pair with `ubuntu24-py312` (`py-spy`, `htop`, `sysstat`, `strace`, `gdb`) or `ubuntu24-cuda12-py312` (`nsys`, `ncu`, `py-spy`) on the `base-images` branch, and check host readiness with `pokey doctor`.
 
-By default, every pod mounts `/var/log/${pod-name}` (host -> container) and sets `POKEY_PROFILE_DIR=/var/log/${pod-name}/profiles` so logs, flamegraphs, and Nsight reports persist on the host.
+By default, every pod mounts `~/.local/state/pokeymans/logs/${pod-name}` (host) -> `/var/log/${pod-name}` (container) and sets `POKEY_PROFILE_DIR=/var/log/${pod-name}/profiles` so logs, flamegraphs, and Nsight reports persist on the host.
 
 ## Quick Build & Install (`.whl`)
 

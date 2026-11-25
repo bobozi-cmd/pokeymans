@@ -12,6 +12,7 @@ from pokeymans.models.runtime import MountSpec
 
 DEFAULT_CONFIG_FILENAME = "pokey.yaml"
 DEFAULT_LOG_DIR_TEMPLATE = "/var/log/${pod-name}"
+DEFAULT_HOST_LOG_DIR_TEMPLATE = "~/.local/state/pokeymans/logs/${pod-name}"
 DEFAULT_BASE_IMAGES_REPO = "git@github.com:bobozi-cmd/pokeymans.git"
 DEFAULT_BASE_IMAGES_BRANCH = "base-images"
 
@@ -56,17 +57,17 @@ class BaseImageRef:
 
 @dataclass
 class LogMountConfig:
-    """Default persistent log directory mount (`/var/log/${pod-name}`)."""
+    """Default persistent log directory mount (`~/.local/state/pokeymans/logs/${pod-name}` -> `/var/log/${pod-name}`)."""
 
     enabled: bool = True
-    host_dir: str = DEFAULT_LOG_DIR_TEMPLATE
+    host_dir: str = DEFAULT_HOST_LOG_DIR_TEMPLATE
     container_dir: str = DEFAULT_LOG_DIR_TEMPLATE
 
     def resolve_mount(self, pod_name: str) -> MountSpec | None:
-        """Expand `${pod-name}` and return the resolved MountSpec if enabled."""
+        """Expand `~` and `${pod-name}` and return the resolved MountSpec if enabled."""
         if not self.enabled:
             return None
-        host = self.host_dir.replace("${pod-name}", pod_name)
+        host = str(Path(self.host_dir.replace("${pod-name}", pod_name)).expanduser())
         container = self.container_dir.replace("${pod-name}", pod_name)
         return MountSpec(source=host, target=container, read_only=False)
 

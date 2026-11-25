@@ -27,7 +27,7 @@ class TestConfigLoader(unittest.TestCase):
         self.assertEqual(cfg.run.env["APP_ENV"], "production")
         log_mount = cfg.effective_log_mount()
         assert log_mount is not None
-        self.assertEqual(log_mount.source, "/var/log/demo-service")
+        self.assertEqual(log_mount.source, str(Path.home() / ".local/state/pokeymans/logs/demo-service"))
         self.assertEqual(log_mount.target, "/var/log/demo-service")
 
     def test_generate_template_preserves_pod_name_placeholder_and_loads(self) -> None:
@@ -47,7 +47,7 @@ class TestConfigLoader(unittest.TestCase):
             self.assertEqual(cfg.mode, PodMode.DEV)
             log_mount = cfg.effective_log_mount()
             assert log_mount is not None
-            self.assertEqual(log_mount.source, "/var/log/billing")
+            self.assertEqual(log_mount.source, str(Path.home() / ".local/state/pokeymans/logs/billing"))
 
             dumped = Path(tmp) / "dumped.yaml"
             dump_config(cfg, dumped)

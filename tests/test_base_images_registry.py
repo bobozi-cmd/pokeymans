@@ -10,29 +10,66 @@ from pokeymans import BaseImageNotFoundError, BaseImageRef
 from pokeymans.base_images import BaseImageRegistry
 
 
+def _init_base_images_repo(repo_dir: Path, catalog_yaml: str, dockerfiles: dict[str, str] | None = None) -> None:
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-b", "base-images"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "tester@example.com"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "tester"], cwd=repo_dir, check=True)
+
+    (repo_dir / "catalog.yaml").write_text(catalog_yaml, encoding="utf-8")
+    for rel, body in (dockerfiles or {}).items():
+        target = repo_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body, encoding="utf-8")
+
+    subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "init base-images"], cwd=repo_dir, check=True, capture_output=True)
+
+
 class TestBaseImageRegistry(unittest.TestCase):
     def test_sync_list_info_and_pull_from_local_git_base_images_branch(self) -> None:
-        repo_root = Path(__file__).resolve().parent.parent
         with tempfile.TemporaryDirectory() as tmp:
-            cache_dir = Path(tmp) / "cache"
+            tmp_path = Path(tmp)
+            remote = tmp_path / "remote"
+            _init_base_images_repo(
+                remote,
+                catalog_yaml=(
+                    'version: "1"\n'
+                    'branch: "base-images"\n'
+                    "images:\n"
+                    '  - name: "ubuntu24-py312"\n'
+                    '    tag: "latest"\n'
+                    '    description: "Ubuntu 24.04 + Python 3.12"\n'
+                    '    dockerfile: "images/ubuntu24-py312/Dockerfile"\n'
+                    '    registry_ref: ""\n'
+                    '    os: "ubuntu:24.04"\n'
+                    '    python: "3.12"\n'
+                    "    tags:\n"
+                    "      - ubuntu\n"
+                    "      - python\n"
+                ),
+                dockerfiles={"images/ubuntu24-py312/Dockerfile": "FROM ubuntu:24.04\n"},
+            )
+
+            cache_dir = tmp_path / "cache"
             mock_docker = MagicMock()
             mock_docker.image_exists.return_value = False
 
             registry = BaseImageRegistry(
-                repo_url=str(repo_root),
+                repo_url=str(remote),
                 branch="base-images",
                 cache_dir=cache_dir,
                 docker=mock_docker,
             )
 
-            # Sync clones the `base-images` branch from this repo
+            # Sync clones the `base-images` branch from the test git repo
             synced = registry.sync()
             self.assertEqual(synced, cache_dir)
             self.assertTrue((cache_dir / "catalog.yaml").is_file())
 
             # List & tag filtering
             images = registry.list_images(auto_sync=False)
-            self.assertGreaterEqual(len(images), 1)
+            self.assertEqual(len(images), 1)
             py_images = registry.list_images(tag_filter="python", auto_sync=False)
             self.assertEqual(py_images[0].name, "ubuntu24-py312")
 
@@ -57,25 +94,25 @@ class TestBaseImageRegistry(unittest.TestCase):
 
     def test_pull_uses_registry_ref_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            # Create a mini git repo with a `base-images` branch that has registry_ref
-            remote = Path(tmp) / "remote"
-            remote.mkdir()
-            subprocess.run(["git", "init", "-b", "base-images"], cwd=remote, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=remote, check=True)
-            subprocess.run(["git", "config", "user.name", "tester"], cwd=remote, check=True)
-            (remote / "catalog.yaml").write_text(
-                'version: "1"\nimages:\n  - name: cuda12\n    tag: latest\n    registry_ref: ghcr.io/org/cuda12:latest\n',
-                encoding="utf-8",
+            tmp_path = Path(tmp)
+            remote = tmp_path / "remote"
+            _init_base_images_repo(
+                remote,
+                catalog_yaml=(
+                    'version: "1"\n'
+                    "images:\n"
+                    "  - name: cuda12\n"
+                    "    tag: latest\n"
+                    "    registry_ref: ghcr.io/org/cuda12:latest\n"
+                ),
             )
-            subprocess.run(["git", "add", "catalog.yaml"], cwd=remote, check=True)
-            subprocess.run(["git", "commit", "-m", "add cuda12"], cwd=remote, check=True, capture_output=True)
 
             mock_docker = MagicMock()
             mock_docker.image_exists.return_value = False
             registry = BaseImageRegistry(
                 repo_url=str(remote),
                 branch="base-images",
-                cache_dir=Path(tmp) / "cache",
+                cache_dir=tmp_path / "cache",
                 docker=mock_docker,
             )
             resolved = registry.pull("cuda12")

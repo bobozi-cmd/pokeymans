@@ -1,9 +1,8 @@
-"""Build hook injecting git commit ID into wheel version and `_build_info.py`."""
+"""Build hook linking git tag + commit ID into wheel version and `_build_info.py`."""
 
 from __future__ import annotations
 
-import re
-import subprocess
+import importlib.util
 from pathlib import Path
 
 from setuptools import setup
@@ -12,50 +11,24 @@ from setuptools.command.build_py import build_py as _build_py
 ROOT = Path(__file__).resolve().parent
 
 
-def _read_base_version() -> str:
-    text = (ROOT / "src" / "pokeymans" / "_version.py").read_text(encoding="utf-8")
-    match = re.search(r'^BASE_VERSION\s*=\s*"([^"]+)"', text, re.MULTILINE)
-    if not match:
-        raise RuntimeError("Could not find BASE_VERSION in src/pokeymans/_version.py")
-    return match.group(1)
+def _load_version_module():
+    spec = importlib.util.spec_from_file_location(
+        "_pokeymans_version_build",
+        ROOT / "src" / "pokeymans" / "_version.py",
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Unable to load src/pokeymans/_version.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def _git_info() -> tuple[str | None, bool]:
-    if not (ROOT / ".git").exists():
-        return None, False
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "--short=7", "HEAD"],
-            cwd=str(ROOT),
-            text=True,
-            stderr=subprocess.DEVNULL,
-        ).strip()
-        if not commit:
-            return None, False
-        dirty = bool(
-            subprocess.check_output(
-                ["git", "status", "--porcelain", "--untracked-files=no"],
-                cwd=str(ROOT),
-                text=True,
-                stderr=subprocess.DEVNULL,
-            ).strip()
-        )
-        return commit, dirty
-    except (OSError, subprocess.SubprocessError):
-        return None, False
-
-
-BASE_VERSION = _read_base_version()
-GIT_COMMIT, GIT_DIRTY = _git_info()
-FULL_VERSION = (
-    f"{BASE_VERSION}+g{GIT_COMMIT}{'.dirty' if GIT_DIRTY else ''}"
-    if GIT_COMMIT
-    else BASE_VERSION
-)
+_ver_mod = _load_version_module()
+FULL_VERSION, GIT_COMMIT, GIT_DIRTY = _ver_mod.resolve_git_version(ROOT)
 
 
 class BuildPyWithGitInfo(_build_py):
-    """Write `pokeymans/_build_info.py` into the build output without dirtying `src/`."""
+    """Write `pokeymans/_build_info.py` into build_lib without dirtying `src/`."""
 
     def run(self) -> None:
         super().run()
